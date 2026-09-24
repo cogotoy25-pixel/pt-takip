@@ -1,6 +1,3 @@
-export const dynamic = 'force-dynamic';
-export const revalidate = 0;
-
 'use client';
 
 import React, { useState, useEffect } from 'react';
@@ -64,16 +61,13 @@ export default function PTApp() {
   const [coachNote, setCoachNote] = useState('');
   const [inputs, setInputs] = useState<Record<string, Record<number, { kg: string; tekrar: string; zorluk: string }>>>({});
   
-  // Antrenör Yetkisi State'i
   const [isCoach, setIsCoach] = useState(false);
   const [savedWorkouts, setSavedWorkouts] = useState<any[]>([]);
   
-  // Kronometre State'i
   const [restTime, setRestTime] = useState<number | null>(null);
 
   const currentWorkout = workoutData[selectedDay];
 
-  // Gizli Link Kontrolü
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     if (urlParams.get('yetki') === 'koc') {
@@ -84,7 +78,19 @@ export default function PTApp() {
     }
   }, []);
 
-  // Kadın Sesi Hazırlığı (Tarayıcının sesleri yüklemesini bekler)
+  const handleSecretTap = () => {
+    if (!isCoach) {
+      localStorage.setItem('isCoach', 'true');
+      setIsCoach(true);
+      alert('🔓 Antrenör Paneli Aktif Edildi!');
+    } else {
+       localStorage.removeItem('isCoach');
+       setIsCoach(false);
+       setActiveTab('program');
+       alert('🔒 Antrenör Paneli Kapatıldı.');
+    }
+  };
+
   useEffect(() => {
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
       window.speechSynthesis.getVoices();
@@ -93,13 +99,15 @@ export default function PTApp() {
 
   const playWarningSound = () => {
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+      
       const utterance = new SpeechSynthesisUtterance("Yeni set için hazırlan.");
       utterance.lang = 'tr-TR';
       utterance.rate = 1.0;
+      utterance.volume = 0.8;
       
       const voices = window.speechSynthesis.getVoices();
       const turkishVoices = voices.filter(v => v.lang.includes('tr'));
-      // Varsa kadın sesini bulmaya çalış, yoksa varsayılanı kullan
       const femaleVoice = turkishVoices.find(v => v.name.toLowerCase().includes('female') || v.name.includes('Yelda')) || turkishVoices[0];
       
       if (femaleVoice) {
@@ -142,11 +150,25 @@ export default function PTApp() {
     }));
   };
 
-  // Akıllı Bitir Butonu (Kronometreyi Başlatır)
   const handleBitir = (restString: string) => {
     const seconds = parseInt(restString.replace(/\D/g, ''));
     if (!isNaN(seconds)) {
       setRestTime(seconds);
+    }
+  };
+
+  const handleGec = (supersetText: string, currentId: string) => {
+    const targetCode = supersetText.split(' ')[0].toLowerCase();
+    const isDayB = currentId.startsWith('b_');
+    const targetId = isDayB ? `b_${targetCode}` : targetCode;
+    
+    const targetElement = document.getElementById(targetId);
+    if (targetElement) {
+      targetElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      targetElement.classList.add('ring-4', 'ring-blue-400', 'transition-all', 'duration-500');
+      setTimeout(() => {
+        targetElement.classList.remove('ring-4', 'ring-blue-400');
+      }, 1500);
     }
   };
 
@@ -172,6 +194,7 @@ export default function PTApp() {
       ]);
       alert('Antrenman Başarıyla Kaydedildi!');
     } catch (err) {
+      console.error("Supabase kayıt hatası:", err); // Vercel için düzeltildi
       alert('Kayıt sırasında hata oluştu.');
     }
   };
@@ -189,10 +212,9 @@ export default function PTApp() {
   }, [activeTab, isCoach]);
 
   return (
-    <main className="min-h-screen bg-slate-50 text-slate-800 font-sans pb-24">
-      {/* Yüzen Aktif Kronometre */}
+    <main className="min-h-screen bg-slate-100 text-slate-800 font-sans pb-24">
       {restTime !== null && restTime > 0 && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-blue-900 border border-blue-500 shadow-2xl rounded-full px-6 py-3 z-50 flex items-center gap-4 text-white">
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-[#2a3b68] border border-blue-400 shadow-2xl rounded-full px-6 py-3 z-50 flex items-center gap-4 text-white">
           <span className="animate-pulse text-xl">⏱️</span>
           <div className="flex flex-col">
             <span className="text-[10px] text-blue-200 font-bold leading-none">DİNLENME</span>
@@ -200,31 +222,33 @@ export default function PTApp() {
           </div>
           <button 
             onClick={() => setRestTime(null)} 
-            className="ml-4 bg-blue-800 text-blue-200 hover:text-white text-xs px-3 py-1.5 rounded-full border border-blue-700"
+            className="ml-4 bg-[#1e2a4a] text-blue-200 hover:text-white text-xs px-4 py-2 rounded-full border border-blue-700 font-bold"
           >
-            Geç
+            Kapat
           </button>
         </div>
       )}
 
-      {/* Orijinal Mavi Başlık */}
-      <div className="bg-[#2a3b68] text-white p-6 rounded-b-3xl mb-4 shadow-md text-center relative max-w-2xl mx-auto">
-        <h1 className="text-xl font-bold mb-1 tracking-wide">KUVVET & HİPERTROFİ</h1>
-        <p className="text-xs text-blue-200 mb-6">Hyrox Entegrasyonlu Performans Takibi</p>
+      <div className="bg-[#2a3b68] text-white p-6 rounded-b-[2rem] mb-6 shadow-md text-center relative max-w-2xl mx-auto">
+        <h1 
+          className="text-xl font-bold mb-1 tracking-wide cursor-pointer" 
+          onDoubleClick={handleSecretTap}
+        >
+          KUVVET & HİPERTROFİ
+        </h1>
+        <p className="text-[11px] text-blue-200 mb-6 font-medium">Hyrox Entegrasyonlu Performans Takibi</p>
 
-        {/* Antrenör Sekmesi (Sadece Gizli Linkle Girene Görünür) */}
         {isCoach && (
-          <div className="flex justify-center bg-[#1e2a4a] p-1 rounded-xl w-fit mx-auto mb-4 border border-[#3b4b7a]">
-            <button onClick={() => setActiveTab('program')} className={`px-4 py-2 text-xs font-semibold rounded-lg ${activeTab === 'program' ? 'bg-blue-600 text-white' : 'text-blue-300'}`}>Program</button>
-            <button onClick={() => setActiveTab('coach')} className={`px-4 py-2 text-xs font-semibold rounded-lg ${activeTab === 'coach' ? 'bg-blue-600 text-white' : 'text-blue-300'}`}>📊 Antrenör Paneli</button>
+          <div className="flex justify-center bg-[#1e2a4a] p-1.5 rounded-xl w-fit mx-auto mb-4 border border-[#3b4b7a]">
+            <button onClick={() => setActiveTab('program')} className={`px-4 py-2 text-xs font-bold rounded-lg ${activeTab === 'program' ? 'bg-slate-50 text-[#2a3b68] shadow' : 'text-blue-300'}`}>Program</button>
+            <button onClick={() => setActiveTab('coach')} className={`px-4 py-2 text-xs font-bold rounded-lg ${activeTab === 'coach' ? 'bg-slate-50 text-[#2a3b68] shadow' : 'text-blue-300'}`}>📊 Panel</button>
           </div>
         )}
 
-        {/* Gün Seçimi (Orijinal Beyaz Butonlar) */}
         {activeTab === 'program' && (
           <div className="flex justify-center gap-3">
-            <button onClick={() => setSelectedDay('gunA')} className={`px-6 py-2.5 rounded-full text-xs font-bold transition-all shadow-sm ${selectedDay === 'gunA' ? 'bg-white text-[#2a3b68]' : 'bg-[#3b4b7a] text-blue-100'}`}>Gün A (Salı)</button>
-            <button onClick={() => setSelectedDay('gunB')} className={`px-6 py-2.5 rounded-full text-xs font-bold transition-all shadow-sm ${selectedDay === 'gunB' ? 'bg-white text-[#2a3b68]' : 'bg-[#3b4b7a] text-blue-100'}`}>Gün B (Cuma)</button>
+            <button onClick={() => setSelectedDay('gunA')} className={`px-6 py-2.5 rounded-full text-xs font-bold transition-all shadow-sm ${selectedDay === 'gunA' ? 'bg-slate-50 text-[#2a3b68]' : 'bg-[#3b4b7a] text-blue-100 border border-[#4a5a8a]'}`}>Gün A (Salı)</button>
+            <button onClick={() => setSelectedDay('gunB')} className={`px-6 py-2.5 rounded-full text-xs font-bold transition-all shadow-sm ${selectedDay === 'gunB' ? 'bg-slate-50 text-[#2a3b68]' : 'bg-[#3b4b7a] text-blue-100 border border-[#4a5a8a]'}`}>Gün B (Cuma)</button>
           </div>
         )}
       </div>
@@ -232,87 +256,96 @@ export default function PTApp() {
       <div className="max-w-2xl mx-auto px-4">
         {activeTab === 'program' ? (
           <>
-            <div className="mb-6 flex flex-col sm:flex-row items-center justify-between gap-3 bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-              <input type="text" value={studentName} onChange={(e) => setStudentName(e.target.value)} className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm w-full sm:w-auto outline-none focus:border-blue-500 font-medium" placeholder="Sporcu Adı" />
+            <div className="mb-6 flex flex-col sm:flex-row items-center justify-between gap-3 bg-slate-50 p-4 rounded-xl border border-slate-200 shadow-sm">
+              <input type="text" value={studentName} onChange={(e) => setStudentName(e.target.value)} className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm w-full sm:w-auto outline-none focus:border-blue-500 font-bold text-slate-700 shadow-sm" placeholder="Sporcu Adı" />
             </div>
 
-            <div className="mb-6 bg-white border border-slate-200 p-4 rounded-xl shadow-sm text-center">
-              <h2 className="text-sm font-bold text-slate-700">{currentWorkout.dayName}</h2>
+            <div className="mb-6 bg-slate-50 border border-slate-200 p-4 rounded-xl shadow-sm text-center">
+              <h2 className="text-sm font-bold text-[#2a3b68]">{currentWorkout.dayName}</h2>
             </div>
 
             <div className="space-y-6">
-              {currentWorkout.exercises.map((ex, idx) => (
-                <div key={ex.id} className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
-                  {/* Orijinal Başlık ve Form Butonu (Eski Konum) */}
+              {currentWorkout.exercises.map((ex) => (
+                <div key={ex.id} id={ex.id} className="bg-slate-50 border border-slate-200 rounded-3xl p-5 shadow-sm">
                   <div className="flex justify-between items-start mb-4">
-                    <h3 className="font-bold text-slate-800 text-base">{idx + 1}. {ex.name}</h3>
-                    <a href={`https://www.youtube.com/results?search_query=${encodeURIComponent(ex.youtubeQuery)}`} target="_blank" rel="noopener noreferrer" className="text-xs bg-slate-50 text-blue-600 border border-slate-200 hover:bg-slate-100 px-3 py-1.5 rounded-full font-medium transition-colors">
-                      Form ...
+                    <h3 className="font-extrabold text-slate-800 text-[15px]">{ex.id.split('_').pop()?.toUpperCase()}: {ex.name}</h3>
+                    
+                    <a 
+                      href={`https://www.youtube.com/results?search_query=${encodeURIComponent(ex.youtubeQuery)}`} 
+                      target="_blank" 
+                      rel="noopener noreferrer" 
+                      className="group flex items-center gap-1.5 text-[11px] text-blue-700 bg-blue-50 border border-blue-200 hover:bg-[#2a3b68] hover:text-white hover:border-[#2a3b68] px-3 py-1.5 rounded-full font-bold transition-all duration-300 shadow-sm"
+                    >
+                      <span className="relative flex h-2.5 w-2.5">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500 group-hover:bg-white transition-colors"></span>
+                      </span>
+                      İdeal Formu İzle
                     </a>
                   </div>
 
-                  {/* Orijinal Dönüşümlü Set Bildirimi */}
                   {ex.superset && (
-                    <div className="flex items-center justify-between bg-[#f0f4ff] border border-[#dbe4ff] rounded-xl p-3 mb-4">
+                    <div className="flex items-center justify-between bg-white border border-[#dce5fc] rounded-2xl p-3 mb-5 shadow-sm">
                       <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center text-blue-600 font-bold text-sm">🔄</div>
+                        <div className="w-9 h-9 rounded-xl bg-[#e0e7ff] flex items-center justify-center text-blue-600 text-lg">
+                          🔄
+                        </div>
                         <div>
-                          <span className="text-[10px] text-blue-500 font-bold block leading-none mb-1">DÖNÜŞÜMLÜ SET</span>
-                          <span className="text-xs font-semibold text-slate-700">Sıradaki: {ex.superset}</span>
+                          <span className="text-[9px] text-blue-500 font-extrabold tracking-wider block mb-0.5">DÖNÜŞÜMLÜ SET</span>
+                          <span className="text-xs font-bold text-slate-700">Sıradaki: {ex.superset}</span>
                         </div>
                       </div>
+                      <button onClick={() => ex.superset && handleGec(ex.superset, ex.id)} className="bg-blue-600 text-white text-xs font-bold px-5 py-2 rounded-xl shadow-sm hover:bg-blue-700 transition-colors">
+                        Geç ⌛
+                      </button>
                     </div>
                   )}
 
-                  {/* Orijinal Grid */}
-                  <div className="grid grid-cols-3 gap-2 mb-4 text-center">
-                    <div className="bg-slate-50 rounded-lg p-2 border border-slate-100">
-                      <span className="text-[10px] text-slate-500 block font-medium">SET × TEKRAR</span>
-                      <span className="text-xs font-bold text-slate-700">{ex.setInfo}</span>
+                  <div className="grid grid-cols-3 gap-2 mb-5 text-center">
+                    <div className="bg-white rounded-xl p-2.5 border border-slate-100 shadow-sm">
+                      <span className="text-[9px] text-slate-400 block font-bold mb-1">SET × TEKRAR</span>
+                      <span className="text-xs font-extrabold text-[#2a3b68]">{ex.setInfo}</span>
                     </div>
-                    <div className="bg-slate-50 rounded-lg p-2 border border-slate-100">
-                      <span className="text-[10px] text-slate-500 block font-medium">TEMPO</span>
-                      <span className="text-xs font-bold text-slate-700">{ex.tempo}</span>
+                    <div className="bg-white rounded-xl p-2.5 border border-slate-100 shadow-sm">
+                      <span className="text-[9px] text-slate-400 block font-bold mb-1">TEMPO</span>
+                      <span className="text-xs font-extrabold text-[#2a3b68]">{ex.tempo}</span>
                     </div>
-                    <div className="bg-slate-50 rounded-lg p-2 border border-slate-100">
-                      <span className="text-[10px] text-slate-500 block font-medium">DİNLENME</span>
-                      <span className="text-xs font-bold text-slate-700">{ex.rest}</span>
+                    <div className="bg-white rounded-xl p-2.5 border border-slate-100 shadow-sm">
+                      <span className="text-[9px] text-slate-400 block font-bold mb-1">DİNLENME</span>
+                      <span className="text-xs font-extrabold text-[#2a3b68]">{ex.rest}</span>
                     </div>
                   </div>
 
-                  {/* Orijinal Not Bölümü */}
-                  <div className="text-xs text-slate-600 mb-5 pb-4 border-b border-slate-100">
-                    <strong>Not:</strong> {ex.note}
+                  <div className="text-xs text-slate-600 mb-5 pb-5 border-b border-slate-200">
+                    <strong className="text-slate-800">Not:</strong> {ex.note}
                   </div>
 
-                  {/* Orijinal Tablo Yapısı */}
                   <div className="overflow-x-auto">
                     <table className="w-full text-center text-xs">
                       <thead>
-                        <tr className="text-slate-400 border-b border-slate-100">
-                          <th className="pb-3 font-medium w-12">SET</th>
-                          <th className="pb-3 font-medium">KG</th>
-                          <th className="pb-3 font-medium">TEK</th>
-                          <th className="pb-3 font-medium">ZORLUK (1-10)</th>
-                          <th className="pb-3 font-medium">DURUM</th>
+                        <tr className="text-slate-500 border-b border-slate-200">
+                          <th className="pb-3 font-bold w-10 text-[10px]">SET</th>
+                          <th className="pb-3 font-bold text-[10px]">KG</th>
+                          <th className="pb-3 font-bold text-[10px]">TEK</th>
+                          <th className="pb-3 font-bold text-[10px]">ZORLUK (1-10)</th>
+                          <th className="pb-3 font-bold text-[10px]">DURUM</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-slate-50">
+                      <tbody className="divide-y divide-slate-100">
                         {[1, 2, 3, 4].map((setNo) => (
                           <tr key={setNo}>
-                            <td className="py-3 font-bold text-slate-700">#{setNo}</td>
+                            <td className="py-3 font-extrabold text-slate-700">#{setNo}</td>
                             <td className="py-3 px-1">
-                              <input type="text" placeholder="0" value={inputs[ex.id]?.[setNo]?.kg || ''} onChange={(e) => handleInputChange(ex.id, setNo, 'kg', e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-lg py-2 text-center text-slate-700 font-bold outline-none focus:border-blue-500" />
+                              <input type="text" placeholder="0" value={inputs[ex.id]?.[setNo]?.kg || ''} onChange={(e) => handleInputChange(ex.id, setNo, 'kg', e.target.value)} className="w-full bg-white border border-slate-200 rounded-lg py-2 text-center text-slate-800 font-bold outline-none focus:border-blue-500 shadow-sm" />
                             </td>
                             <td className="py-3 px-1">
-                              <input type="text" placeholder="0" value={inputs[ex.id]?.[setNo]?.tekrar || ''} onChange={(e) => handleInputChange(ex.id, setNo, 'tekrar', e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-lg py-2 text-center text-slate-700 font-bold outline-none focus:border-blue-500" />
+                              <input type="text" placeholder="0" value={inputs[ex.id]?.[setNo]?.tekrar || ''} onChange={(e) => handleInputChange(ex.id, setNo, 'tekrar', e.target.value)} className="w-full bg-white border border-slate-200 rounded-lg py-2 text-center text-slate-800 font-bold outline-none focus:border-blue-500 shadow-sm" />
                             </td>
                             <td className="py-3 px-1">
-                              <input type="text" placeholder="-" value={inputs[ex.id]?.[setNo]?.zorluk || ''} onChange={(e) => handleInputChange(ex.id, setNo, 'zorluk', e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-lg py-2 text-center text-slate-700 font-bold outline-none focus:border-blue-500" />
+                              <input type="text" placeholder="-" value={inputs[ex.id]?.[setNo]?.zorluk || ''} onChange={(e) => handleInputChange(ex.id, setNo, 'zorluk', e.target.value)} className="w-full bg-white border border-slate-200 rounded-lg py-2 text-center text-slate-800 font-bold outline-none focus:border-blue-500 shadow-sm" />
                             </td>
                             <td className="py-3 pl-2">
-                              {/* Orijinal Bitir Butonu (Basınca Kronometre Başlar) */}
-                              <button onClick={() => handleBitir(ex.rest)} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 rounded-xl text-xs transition-colors shadow-sm">
+                              <button onClick={() => handleBitir(ex.rest)} className="w-full bg-[#3b4b7a] hover:bg-[#2a3b68] text-white font-bold py-2 rounded-xl text-xs transition-colors shadow-sm">
                                 Bitir
                               </button>
                             </td>
@@ -325,33 +358,34 @@ export default function PTApp() {
               ))}
             </div>
 
-            <div className="mt-8 bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
-              <textarea rows={3} placeholder="Antrenörüne not bırak..." value={coachNote} onChange={(e) => setCoachNote(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm outline-none focus:border-blue-500 mb-4 text-slate-700" />
-              <button onClick={saveWorkoutToSupabase} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-xl shadow-md transition-all text-sm">
-                Antrenmanı Kaydet
+            <div className="mt-8 bg-slate-50 border border-slate-200 rounded-3xl p-6 shadow-sm">
+              <label className="block text-xs font-bold text-[#2a3b68] mb-2">Antrenörüne Not Bırak:</label>
+              <textarea rows={3} placeholder="Zorlandığın bir hareket oldu mu?" value={coachNote} onChange={(e) => setCoachNote(e.target.value)} className="w-full bg-white border border-slate-200 rounded-xl p-4 text-sm outline-none focus:border-blue-500 mb-4 text-slate-700 font-medium shadow-sm" />
+              <button onClick={saveWorkoutToSupabase} className="w-full bg-[#2a3b68] hover:bg-[#1e2a4a] text-white font-bold py-4 rounded-xl shadow-md transition-all text-sm">
+                Antrenmanı Kaydet ve Bitir
               </button>
             </div>
           </>
         ) : (
           <div className="space-y-4">
-            <h2 className="text-lg font-bold text-slate-800 mb-4">Sporcu Antrenman Geçmişi</h2>
+            <h2 className="text-lg font-extrabold text-[#2a3b68] mb-4">Sporcu Antrenman Geçmişi</h2>
             {savedWorkouts.map((workout, index) => (
-              <div key={index} className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
-                <div className="flex justify-between border-b border-slate-100 pb-3 mb-3">
-                  <span className="font-bold text-slate-800">{workout.ogrenci_adi} - {workout.antrenman_gunu}</span>
-                  <span className="text-xs text-slate-500">{new Date(workout.oluşturulma_tarihi).toLocaleString('tr-TR')}</span>
+              <div key={index} className="bg-slate-50 border border-slate-200 rounded-3xl p-5 shadow-sm">
+                <div className="flex justify-between items-center border-b border-slate-200 pb-3 mb-3">
+                  <span className="font-extrabold text-slate-800">{workout.ogrenci_adi} <span className="text-blue-500 ml-1">• {workout.antrenman_gunu}</span></span>
+                  <span className="text-[10px] text-slate-400 font-bold">{new Date(workout.oluşturulma_tarihi).toLocaleString('tr-TR')}</span>
                 </div>
-                <div className="text-xs text-slate-600 mb-4 italic">Not: "{workout.koc_notu}"</div>
+                <div className="text-xs text-slate-600 mb-4 bg-white p-3 rounded-xl border border-slate-100 shadow-sm italic">&quot; {workout.koc_notu} &quot;</div>
                 {workout.antrenman_verileri?.map((ex: any, i: number) => (
-                  <div key={i} className="mb-3 text-xs bg-slate-50 p-2 rounded-lg border border-slate-100">
-                    <strong className="text-blue-600 block mb-1">{ex.exercise}</strong>
-                    <div className="grid grid-cols-4 gap-1">
+                  <div key={i} className="mb-3 text-xs bg-white p-3 rounded-xl border border-slate-100 shadow-sm">
+                    <strong className="text-[#2a3b68] block mb-2">{ex.exercise}</strong>
+                    <div className="grid grid-cols-4 gap-2">
                       {ex.sets?.map((set: any, sIdx: number) => (
-                        <div key={sIdx} className="bg-white p-1 rounded border border-slate-200 text-center">
-                          <div className="text-[9px] text-slate-400">S:{set.set_no}</div>
-                          <div>{set.kg}kg</div>
-                          <div>{set.tekrar}t</div>
-                          <div>Z:{set.zorluk}</div>
+                        <div key={sIdx} className="bg-slate-50 p-2 rounded-lg border border-slate-200 text-center">
+                          <div className="text-[9px] text-slate-400 font-bold mb-1">SET {set.set_no}</div>
+                          <div className="font-bold text-slate-700">{set.kg} <span className="text-[9px] font-normal">kg</span></div>
+                          <div className="font-bold text-slate-700">{set.tekrar} <span className="text-[9px] font-normal">tek</span></div>
+                          <div className="font-bold text-blue-600 mt-1">Z: {set.zorluk}</div>
                         </div>
                       ))}
                     </div>
