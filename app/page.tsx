@@ -61,12 +61,20 @@ export default function PTApp() {
   const [coachNote, setCoachNote] = useState('');
   const [inputs, setInputs] = useState<Record<string, Record<number, { kg: string; tekrar: string; zorluk: string }>>>({});
   
+  // Hangi setlerin kronometresine (Bitir) basıldığını takip eder
+  const [finishedSets, setFinishedSets] = useState<Record<string, number[]>>({});
+  
   const [isCoach, setIsCoach] = useState(false);
   const [savedWorkouts, setSavedWorkouts] = useState<any[]>([]);
   
   const [restTime, setRestTime] = useState<number | null>(null);
 
   const currentWorkout = workoutData[selectedDay];
+
+  const getSetCount = (setInfo: string) => {
+    const match = setInfo.match(/^(\d+)/);
+    return match ? parseInt(match[1]) : 4;
+  };
 
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
@@ -100,7 +108,6 @@ export default function PTApp() {
   const playWarningSound = () => {
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
       window.speechSynthesis.cancel();
-      
       const utterance = new SpeechSynthesisUtterance("Yeni set için hazırlan.");
       utterance.lang = 'tr-TR';
       utterance.rate = 1.0;
@@ -113,7 +120,6 @@ export default function PTApp() {
       if (femaleVoice) {
         utterance.voice = femaleVoice;
       }
-      
       window.speechSynthesis.speak(utterance);
     }
   };
@@ -150,7 +156,16 @@ export default function PTApp() {
     }));
   };
 
-  const handleBitir = (restString: string) => {
+  // Yeni Akıllı BİTİR Fonksiyonu (Kronometreyi başlatır ve seti tamamlandı işaretler)
+  const handleBitir = (exerciseId: string, setNo: number, restString: string) => {
+    setFinishedSets(prev => {
+      const current = prev[exerciseId] || [];
+      if (!current.includes(setNo)) {
+        return { ...prev, [exerciseId]: [...current, setNo] };
+      }
+      return prev;
+    });
+
     const seconds = parseInt(restString.replace(/\D/g, ''));
     if (!isNaN(seconds)) {
       setRestTime(seconds);
@@ -162,7 +177,35 @@ export default function PTApp() {
     const isDayB = currentId.startsWith('b_');
     const targetId = isDayB ? `b_${targetCode}` : targetCode;
     
-    const targetElement = document.getElementById(targetId);
+    const currentEx = currentWorkout.exercises.find(e => e.id === currentId);
+    const targetEx = currentWorkout.exercises.find(e => e.id === targetId);
+    
+    const currentTotalSets = currentEx ? getSetCount(currentEx.setInfo) : 4;
+    const targetTotalSets = targetEx ? getSetCount(targetEx.setInfo) : 4;
+
+    // Sadece "Bitir" butonuna basılan benzersiz setleri sayıyoruz
+    const currentCompletedCount = finishedSets[currentId]?.length || 0;
+    const targetCompletedCount = finishedSets[targetId]?.length || 0;
+
+    let elementToScrollId = targetId;
+
+    if (currentCompletedCount >= currentTotalSets && targetCompletedCount >= targetTotalSets) {
+      const currentIndex = currentWorkout.exercises.findIndex(e => e.id === currentId);
+      let nextIndex = currentIndex + 1;
+      
+      if (currentWorkout.exercises[nextIndex]?.id === targetId) {
+        nextIndex++; 
+      }
+      
+      if (currentWorkout.exercises[nextIndex]) {
+        elementToScrollId = currentWorkout.exercises[nextIndex].id;
+      } else {
+        alert('🎉 Harika! Tüm hareketleri tamamladın.');
+        return;
+      }
+    }
+
+    const targetElement = document.getElementById(elementToScrollId);
     if (targetElement) {
       targetElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
       targetElement.classList.add('ring-4', 'ring-blue-400', 'transition-all', 'duration-500');
@@ -174,15 +217,18 @@ export default function PTApp() {
 
   const saveWorkoutToSupabase = async () => {
     try {
-      const workoutPayload = currentWorkout.exercises.map(ex => ({
-        exercise: ex.name,
-        sets: [1, 2, 3, 4].map(setNo => ({
-          set_no: setNo,
-          kg: inputs[ex.id]?.[setNo]?.kg || 'BOŞ',
-          tekrar: inputs[ex.id]?.[setNo]?.tekrar || 'BOŞ',
-          zorluk: inputs[ex.id]?.[setNo]?.zorluk || 'BOŞ'
-        }))
-      }));
+      const workoutPayload = currentWorkout.exercises.map(ex => {
+        const totalSets = getSetCount(ex.setInfo);
+        return {
+          exercise: ex.name,
+          sets: Array.from({ length: totalSets }, (_, i) => i + 1).map(setNo => ({
+            set_no: setNo,
+            kg: inputs[ex.id]?.[setNo]?.kg || 'BOŞ',
+            tekrar: inputs[ex.id]?.[setNo]?.tekrar || 'BOŞ',
+            zorluk: inputs[ex.id]?.[setNo]?.zorluk || 'BOŞ'
+          }))
+        };
+      });
 
       await supabase.from('tamamlanmis_antrenmanlar').insert([
         {
@@ -194,7 +240,7 @@ export default function PTApp() {
       ]);
       alert('Antrenman Başarıyla Kaydedildi!');
     } catch (err) {
-      console.error("Supabase kayıt hatası:", err); // Vercel için düzeltildi
+      console.error("Supabase kayıt hatası:", err);
       alert('Kayıt sırasında hata oluştu.');
     }
   };
@@ -265,97 +311,119 @@ export default function PTApp() {
             </div>
 
             <div className="space-y-6">
-              {currentWorkout.exercises.map((ex) => (
-                <div key={ex.id} id={ex.id} className="bg-slate-50 border border-slate-200 rounded-3xl p-5 shadow-sm">
-                  <div className="flex justify-between items-start mb-4">
-                    <h3 className="font-extrabold text-slate-800 text-[15px]">{ex.id.split('_').pop()?.toUpperCase()}: {ex.name}</h3>
-                    
-                    <a 
-                      href={`https://www.youtube.com/results?search_query=${encodeURIComponent(ex.youtubeQuery)}`} 
-                      target="_blank" 
-                      rel="noopener noreferrer" 
-                      className="group flex items-center gap-1.5 text-[11px] text-blue-700 bg-blue-50 border border-blue-200 hover:bg-[#2a3b68] hover:text-white hover:border-[#2a3b68] px-3 py-1.5 rounded-full font-bold transition-all duration-300 shadow-sm"
-                    >
-                      <span className="relative flex h-2.5 w-2.5">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500 group-hover:bg-white transition-colors"></span>
-                      </span>
-                      İdeal Formu İzle
-                    </a>
-                  </div>
+              {currentWorkout.exercises.map((ex) => {
+                const totalSets = getSetCount(ex.setInfo);
+                
+                // Bu kısım buton metnini "Sonraki Harekete Geç" yapmak için
+                const targetCode = ex.superset ? ex.superset.split(' ')[0].toLowerCase() : '';
+                const isDayB = ex.id.startsWith('b_');
+                const targetId = isDayB ? `b_${targetCode}` : targetCode;
+                const targetEx = currentWorkout.exercises.find(e => e.id === targetId);
+                const targetTotalSets = targetEx ? getSetCount(targetEx.setInfo) : 4;
+                
+                const currentCompletedCount = finishedSets[ex.id]?.length || 0;
+                const targetCompletedCount = finishedSets[targetId]?.length || 0;
+                const isSupersetDone = currentCompletedCount >= totalSets && targetCompletedCount >= targetTotalSets;
 
-                  {ex.superset && (
-                    <div className="flex items-center justify-between bg-white border border-[#dce5fc] rounded-2xl p-3 mb-5 shadow-sm">
-                      <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-xl bg-[#e0e7ff] flex items-center justify-center text-blue-600 text-lg">
-                          🔄
+                return (
+                  <div key={ex.id} id={ex.id} className="bg-slate-50 border border-slate-200 rounded-3xl p-5 shadow-sm">
+                    <div className="flex justify-between items-start mb-4">
+                      <h3 className="font-extrabold text-slate-800 text-[15px]">{ex.id.split('_').pop()?.toUpperCase()}: {ex.name}</h3>
+                      
+                      <a 
+                        href={`https://www.youtube.com/results?search_query=${encodeURIComponent(ex.youtubeQuery)}`} 
+                        target="_blank" 
+                        rel="noopener noreferrer" 
+                        className="group flex items-center gap-1.5 text-[11px] text-blue-700 bg-blue-50 border border-blue-200 hover:bg-[#2a3b68] hover:text-white hover:border-[#2a3b68] px-3 py-1.5 rounded-full font-bold transition-all duration-300 shadow-sm"
+                      >
+                        <span className="relative flex h-2.5 w-2.5">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500 group-hover:bg-white transition-colors"></span>
+                        </span>
+                        İdeal Formu İzle
+                      </a>
+                    </div>
+
+                    {/* DÜZELTİLDİ: Arka plan bg-white yapılarak orijinal renk korundu */}
+                    {ex.superset && (
+                      <div className="flex items-center justify-between bg-white border border-[#dce5fc] rounded-2xl p-3 mb-5 shadow-sm">
+                        <div className="flex items-center gap-3">
+                          <div className="w-9 h-9 rounded-xl bg-[#e0e7ff] flex items-center justify-center text-blue-600 text-lg">
+                            🔄
+                          </div>
+                          <div>
+                            <span className="text-[9px] text-blue-500 font-extrabold tracking-wider block mb-0.5">DÖNÜŞÜMLÜ SET</span>
+                            <span className="text-xs font-bold text-slate-700">Sıradaki: {ex.superset}</span>
+                          </div>
                         </div>
-                        <div>
-                          <span className="text-[9px] text-blue-500 font-extrabold tracking-wider block mb-0.5">DÖNÜŞÜMLÜ SET</span>
-                          <span className="text-xs font-bold text-slate-700">Sıradaki: {ex.superset}</span>
-                        </div>
+                        <button onClick={() => ex.superset && handleGec(ex.superset, ex.id)} className={`text-white text-xs font-bold px-5 py-2 rounded-xl shadow-sm transition-colors ${isSupersetDone ? 'bg-green-600 hover:bg-green-700' : 'bg-blue-600 hover:bg-blue-700'}`}>
+                          {isSupersetDone ? 'Sıradaki Harekete Geç ➡️' : 'Geç ⌛'}
+                        </button>
                       </div>
-                      <button onClick={() => ex.superset && handleGec(ex.superset, ex.id)} className="bg-blue-600 text-white text-xs font-bold px-5 py-2 rounded-xl shadow-sm hover:bg-blue-700 transition-colors">
-                        Geç ⌛
-                      </button>
-                    </div>
-                  )}
+                    )}
 
-                  <div className="grid grid-cols-3 gap-2 mb-5 text-center">
-                    <div className="bg-white rounded-xl p-2.5 border border-slate-100 shadow-sm">
-                      <span className="text-[9px] text-slate-400 block font-bold mb-1">SET × TEKRAR</span>
-                      <span className="text-xs font-extrabold text-[#2a3b68]">{ex.setInfo}</span>
+                    <div className="grid grid-cols-3 gap-2 mb-5 text-center">
+                      <div className="bg-white rounded-xl p-2.5 border border-slate-100 shadow-sm">
+                        <span className="text-[9px] text-slate-400 block font-bold mb-1">SET × TEKRAR</span>
+                        <span className="text-xs font-extrabold text-[#2a3b68]">{ex.setInfo}</span>
+                      </div>
+                      <div className="bg-white rounded-xl p-2.5 border border-slate-100 shadow-sm">
+                        <span className="text-[9px] text-slate-400 block font-bold mb-1">TEMPO</span>
+                        <span className="text-xs font-extrabold text-[#2a3b68]">{ex.tempo}</span>
+                      </div>
+                      <div className="bg-white rounded-xl p-2.5 border border-slate-100 shadow-sm">
+                        <span className="text-[9px] text-slate-400 block font-bold mb-1">DİNLENME</span>
+                        <span className="text-xs font-extrabold text-[#2a3b68]">{ex.rest}</span>
+                      </div>
                     </div>
-                    <div className="bg-white rounded-xl p-2.5 border border-slate-100 shadow-sm">
-                      <span className="text-[9px] text-slate-400 block font-bold mb-1">TEMPO</span>
-                      <span className="text-xs font-extrabold text-[#2a3b68]">{ex.tempo}</span>
-                    </div>
-                    <div className="bg-white rounded-xl p-2.5 border border-slate-100 shadow-sm">
-                      <span className="text-[9px] text-slate-400 block font-bold mb-1">DİNLENME</span>
-                      <span className="text-xs font-extrabold text-[#2a3b68]">{ex.rest}</span>
-                    </div>
-                  </div>
 
-                  <div className="text-xs text-slate-600 mb-5 pb-5 border-b border-slate-200">
-                    <strong className="text-slate-800">Not:</strong> {ex.note}
-                  </div>
+                    <div className="text-xs text-slate-600 mb-5 pb-5 border-b border-slate-200">
+                      <strong className="text-slate-800">Not:</strong> {ex.note}
+                    </div>
 
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-center text-xs">
-                      <thead>
-                        <tr className="text-slate-500 border-b border-slate-200">
-                          <th className="pb-3 font-bold w-10 text-[10px]">SET</th>
-                          <th className="pb-3 font-bold text-[10px]">KG</th>
-                          <th className="pb-3 font-bold text-[10px]">TEK</th>
-                          <th className="pb-3 font-bold text-[10px]">ZORLUK (1-10)</th>
-                          <th className="pb-3 font-bold text-[10px]">DURUM</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100">
-                        {[1, 2, 3, 4].map((setNo) => (
-                          <tr key={setNo}>
-                            <td className="py-3 font-extrabold text-slate-700">#{setNo}</td>
-                            <td className="py-3 px-1">
-                              <input type="text" placeholder="0" value={inputs[ex.id]?.[setNo]?.kg || ''} onChange={(e) => handleInputChange(ex.id, setNo, 'kg', e.target.value)} className="w-full bg-white border border-slate-200 rounded-lg py-2 text-center text-slate-800 font-bold outline-none focus:border-blue-500 shadow-sm" />
-                            </td>
-                            <td className="py-3 px-1">
-                              <input type="text" placeholder="0" value={inputs[ex.id]?.[setNo]?.tekrar || ''} onChange={(e) => handleInputChange(ex.id, setNo, 'tekrar', e.target.value)} className="w-full bg-white border border-slate-200 rounded-lg py-2 text-center text-slate-800 font-bold outline-none focus:border-blue-500 shadow-sm" />
-                            </td>
-                            <td className="py-3 px-1">
-                              <input type="text" placeholder="-" value={inputs[ex.id]?.[setNo]?.zorluk || ''} onChange={(e) => handleInputChange(ex.id, setNo, 'zorluk', e.target.value)} className="w-full bg-white border border-slate-200 rounded-lg py-2 text-center text-slate-800 font-bold outline-none focus:border-blue-500 shadow-sm" />
-                            </td>
-                            <td className="py-3 pl-2">
-                              <button onClick={() => handleBitir(ex.rest)} className="w-full bg-[#3b4b7a] hover:bg-[#2a3b68] text-white font-bold py-2 rounded-xl text-xs transition-colors shadow-sm">
-                                Bitir
-                              </button>
-                            </td>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-center text-xs">
+                        <thead>
+                          <tr className="text-slate-500 border-b border-slate-200">
+                            <th className="pb-3 font-bold w-10 text-[10px]">SET</th>
+                            <th className="pb-3 font-bold text-[10px]">KG</th>
+                            <th className="pb-3 font-bold text-[10px]">TEK</th>
+                            <th className="pb-3 font-bold text-[10px]">ZORLUK (1-10)</th>
+                            <th className="pb-3 font-bold text-[10px]">DURUM</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {Array.from({ length: totalSets }, (_, i) => i + 1).map((setNo) => {
+                            const isSetDone = finishedSets[ex.id]?.includes(setNo);
+                            return (
+                              <tr key={setNo}>
+                                <td className="py-3 font-extrabold text-slate-700">#{setNo}</td>
+                                <td className="py-3 px-1">
+                                  <input type="text" placeholder="0" value={inputs[ex.id]?.[setNo]?.kg || ''} onChange={(e) => handleInputChange(ex.id, setNo, 'kg', e.target.value)} className="w-full bg-white border border-slate-200 rounded-lg py-2 text-center text-slate-800 font-bold outline-none focus:border-blue-500 shadow-sm" />
+                                </td>
+                                <td className="py-3 px-1">
+                                  <input type="text" placeholder="0" value={inputs[ex.id]?.[setNo]?.tekrar || ''} onChange={(e) => handleInputChange(ex.id, setNo, 'tekrar', e.target.value)} className="w-full bg-white border border-slate-200 rounded-lg py-2 text-center text-slate-800 font-bold outline-none focus:border-blue-500 shadow-sm" />
+                                </td>
+                                <td className="py-3 px-1">
+                                  <input type="text" placeholder="-" value={inputs[ex.id]?.[setNo]?.zorluk || ''} onChange={(e) => handleInputChange(ex.id, setNo, 'zorluk', e.target.value)} className="w-full bg-white border border-slate-200 rounded-lg py-2 text-center text-slate-800 font-bold outline-none focus:border-blue-500 shadow-sm" />
+                                </td>
+                                <td className="py-3 pl-2">
+                                  <button 
+                                    onClick={() => handleBitir(ex.id, setNo, ex.rest)} 
+                                    className={`w-full text-white font-bold py-2 rounded-xl text-xs transition-colors shadow-sm ${isSetDone ? 'bg-green-600' : 'bg-[#3b4b7a] hover:bg-[#2a3b68]'}`}
+                                  >
+                                    {isSetDone ? 'Bitti ✓' : 'Bitir'}
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
 
             <div className="mt-8 bg-slate-50 border border-slate-200 rounded-3xl p-6 shadow-sm">
