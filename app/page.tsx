@@ -159,14 +159,12 @@ export default function PTApp() {
     const isAlreadyFinished = finishedSets[exerciseId]?.includes(setNo);
 
     if (isAlreadyFinished) {
-      // 2. TIKLAMA (Pasife Alma): Kutucukların kilidini aç, yeşil rengi kaldır, sayacı kapat
       setFinishedSets(prev => ({
         ...prev,
         [exerciseId]: prev[exerciseId].filter(n => n !== setNo)
       }));
       setRestTime(null);
     } else {
-      // 1. TIKLAMA (Aktife Alma): Kutucukları kilitle, yeşil yap, sayacı başlat
       setFinishedSets(prev => ({
         ...prev,
         [exerciseId]: [...(prev[exerciseId] || []), setNo]
@@ -225,6 +223,7 @@ export default function PTApp() {
     }
   };
 
+  // İNGİLİZCE SÜTUN İSİMLERİNE GÖRE GÜNCELLENMİŞ KAYIT FONKSİYONU
   const saveWorkoutToSupabase = async () => {
     try {
       const workoutPayload = currentWorkout.exercises.map(ex => {
@@ -239,12 +238,12 @@ export default function PTApp() {
         };
       });
 
-      await supabase.from('tamamlanmis_antrenmanlar').insert([
+      await supabase.from('completed_workouts').insert([
         {
-          ogrenci_adi: studentName,
-          antrenman_gunu: currentWorkout.dayName.split(':')[0],
-          antrenman_verileri: workoutPayload,
-          koc_notu: coachNote || 'Not yok'
+          student_name: studentName,
+          workout_day: currentWorkout.dayName.split(':')[0],
+          workout_data: workoutPayload,
+          coach_note: coachNote || 'Not yok'
         }
       ]);
       alert('Antrenman Başarıyla Kaydedildi!');
@@ -254,12 +253,13 @@ export default function PTApp() {
     }
   };
 
+  // İNGİLİZCE SÜTUN İSİMLERİNE GÖRE GÜNCELLENMİŞ VERİ ÇEKME FONKSİYONU
   useEffect(() => {
     if (activeTab === 'coach' && isCoach) {
       supabase
-        .from('tamamlanmis_antrenmanlar')
+        .from('completed_workouts')
         .select('*')
-        .order('oluşturulma_tarihi', { ascending: false })
+        .order('created_at', { ascending: false })
         .then(({ data }) => {
           if (data) setSavedWorkouts(data);
         });
@@ -452,14 +452,15 @@ export default function PTApp() {
         ) : (
           <div className="space-y-4">
             <h2 className="text-lg font-extrabold text-[#2a3b68] mb-4">Sporcu Antrenman Geçmişi</h2>
+            {/* İNGİLİZCE SÜTUN İSİMLERİNE GÖRE GÜNCELLENMİŞ EKRAN YANSITMASI */}
             {savedWorkouts.map((workout, index) => (
               <div key={index} className="bg-slate-50 border border-slate-200 rounded-3xl p-5 shadow-sm">
                 <div className="flex justify-between items-center border-b border-slate-200 pb-3 mb-3">
-                  <span className="font-extrabold text-slate-800">{workout.ogrenci_adi} <span className="text-blue-500 ml-1">• {workout.antrenman_gunu}</span></span>
-                  <span className="text-[10px] text-slate-400 font-bold">{new Date(workout.oluşturulma_tarihi).toLocaleString('tr-TR')}</span>
+                  <span className="font-extrabold text-slate-800">{workout.student_name} <span className="text-blue-500 ml-1">• {workout.workout_day}</span></span>
+                  <span className="text-[10px] text-slate-400 font-bold">{new Date(workout.created_at).toLocaleString('tr-TR')}</span>
                 </div>
-                <div className="text-xs text-slate-600 mb-4 bg-white p-3 rounded-xl border border-slate-100 shadow-sm italic">&quot; {workout.koc_notu} &quot;</div>
-                {workout.antrenman_verileri?.map((ex: any, i: number) => (
+                <div className="text-xs text-slate-600 mb-4 bg-white p-3 rounded-xl border border-slate-100 shadow-sm italic">&quot; {workout.coach_note} &quot;</div>
+                {workout.workout_data?.map((ex: any, i: number) => (
                   <div key={i} className="mb-3 text-xs bg-white p-3 rounded-xl border border-slate-100 shadow-sm">
                     <strong className="text-[#2a3b68] block mb-2">{ex.exercise}</strong>
                     <div className="grid grid-cols-4 gap-2">
