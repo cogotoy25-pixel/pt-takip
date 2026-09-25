@@ -3,9 +3,9 @@
 import React, { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
 
-// Supabase Bağlantısı
+// Supabase Bağlantısı (Yeni Şifre ile Güncellendi)
 const supabaseUrl = 'https://eeqevfkdnrfcnexwrai.supabase.co';
-const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVlcWV2ZmtkbnJmY25leHdyYWkiLCJyb2xlIjoiYW5vbiIsInJpYXQiOjI2NDFfaDYycyDqYDIq4'; 
+const supabaseKey = 'sb_publishable_LqUprQCq9gHbh8rcb9NEtg_7hjWTxa1'; 
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 interface ExerciseItem {
@@ -223,7 +223,6 @@ export default function PTApp() {
     }
   };
 
-  // YENİ MERKEZİ VERİ ÇEKME FONKSİYONU
   const fetchWorkouts = async () => {
     const { data, error } = await supabase
       .from('completed_workouts')
@@ -237,7 +236,6 @@ export default function PTApp() {
     }
   };
 
-  // HATA YAKALAYAN VE OTOMATİK GÜNCELLEYEN KAYIT FONKSİYONU
   const saveWorkoutToSupabase = async () => {
     try {
       const workoutPayload = currentWorkout.exercises.map(ex => {
@@ -252,7 +250,6 @@ export default function PTApp() {
         };
       });
 
-      // Supabase'den gelen yanıtı dinliyoruz
       const { error } = await supabase.from('completed_workouts').insert([
         {
           student_name: studentName,
@@ -262,7 +259,6 @@ export default function PTApp() {
         }
       ]);
 
-      // Eğer Supabase bir hata fırlatırsa ekrana yazdırır
       if (error) {
         console.error("Supabase Kayıt Hatası:", error);
         alert(`Veritabanı Hatası: ${error.message}`);
@@ -271,7 +267,6 @@ export default function PTApp() {
 
       alert('Antrenman Başarıyla Kaydedildi!');
       
-      // Kayıt başarılıysa paneli anında günceller
       if (isCoach) {
         fetchWorkouts();
       }
