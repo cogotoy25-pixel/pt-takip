@@ -159,14 +159,12 @@ export default function PTApp() {
     const isAlreadyFinished = finishedSets[exerciseId]?.includes(setNo);
 
     if (isAlreadyFinished) {
-      // 2. TIKLAMA (Pasife Alma): Kutucukların kilidini aç, yeşil rengi kaldır, sayacı kapat
       setFinishedSets(prev => ({
         ...prev,
         [exerciseId]: prev[exerciseId].filter(n => n !== setNo)
       }));
       setRestTime(null);
     } else {
-      // 1. TIKLAMA (Aktife Alma): Kutucukları kilitle, yeşil yap, sayacı başlat
       setFinishedSets(prev => ({
         ...prev,
         [exerciseId]: [...(prev[exerciseId] || []), setNo]
@@ -225,6 +223,21 @@ export default function PTApp() {
     }
   };
 
+  // YENİ MERKEZİ VERİ ÇEKME FONKSİYONU
+  const fetchWorkouts = async () => {
+    const { data, error } = await supabase
+      .from('completed_workouts')
+      .select('*')
+      .order('created_at', { ascending: false });
+    
+    if (data) {
+      setSavedWorkouts(data);
+    } else if (error) {
+      console.error("Veri çekme hatası:", error);
+    }
+  };
+
+  // HATA YAKALAYAN VE OTOMATİK GÜNCELLEYEN KAYIT FONKSİYONU
   const saveWorkoutToSupabase = async () => {
     try {
       const workoutPayload = currentWorkout.exercises.map(ex => {
@@ -239,30 +252,39 @@ export default function PTApp() {
         };
       });
 
-      await supabase.from('tamamlanmis_antrenmanlar').insert([
+      // Supabase'den gelen yanıtı dinliyoruz
+      const { error } = await supabase.from('completed_workouts').insert([
         {
-          ogrenci_adi: studentName,
-          antrenman_gunu: currentWorkout.dayName.split(':')[0],
-          antrenman_verileri: workoutPayload,
-          koc_notu: coachNote || 'Not yok'
+          student_name: studentName,
+          workout_day: currentWorkout.dayName.split(':')[0],
+          workout_data: workoutPayload,
+          coach_note: coachNote || 'Not yok'
         }
       ]);
+
+      // Eğer Supabase bir hata fırlatırsa ekrana yazdırır
+      if (error) {
+        console.error("Supabase Kayıt Hatası:", error);
+        alert(`Veritabanı Hatası: ${error.message}`);
+        return;
+      }
+
       alert('Antrenman Başarıyla Kaydedildi!');
+      
+      // Kayıt başarılıysa paneli anında günceller
+      if (isCoach) {
+        fetchWorkouts();
+      }
+
     } catch (err) {
-      console.error("Supabase kayıt hatası:", err);
-      alert('Kayıt sırasında hata oluştu.');
+      console.error("Beklenmeyen Hata:", err);
+      alert('Kayıt sırasında beklenmeyen bir hata oluştu.');
     }
   };
 
   useEffect(() => {
     if (activeTab === 'coach' && isCoach) {
-      supabase
-        .from('tamamlanmis_antrenmanlar')
-        .select('*')
-        .order('oluşturulma_tarihi', { ascending: false })
-        .then(({ data }) => {
-          if (data) setSavedWorkouts(data);
-        });
+      fetchWorkouts();
     }
   }, [activeTab, isCoach]);
 
@@ -452,30 +474,35 @@ export default function PTApp() {
         ) : (
           <div className="space-y-4">
             <h2 className="text-lg font-extrabold text-[#2a3b68] mb-4">Sporcu Antrenman Geçmişi</h2>
-            {savedWorkouts.map((workout, index) => (
-              <div key={index} className="bg-slate-50 border border-slate-200 rounded-3xl p-5 shadow-sm">
-                <div className="flex justify-between items-center border-b border-slate-200 pb-3 mb-3">
-                  <span className="font-extrabold text-slate-800">{workout.ogrenci_adi} <span className="text-blue-500 ml-1">• {workout.antrenman_gunu}</span></span>
-                  <span className="text-[10px] text-slate-400 font-bold">{new Date(workout.oluşturulma_tarihi).toLocaleString('tr-TR')}</span>
-                </div>
-                <div className="text-xs text-slate-600 mb-4 bg-white p-3 rounded-xl border border-slate-100 shadow-sm italic">&quot; {workout.koc_notu} &quot;</div>
-                {workout.antrenman_verileri?.map((ex: any, i: number) => (
-                  <div key={i} className="mb-3 text-xs bg-white p-3 rounded-xl border border-slate-100 shadow-sm">
-                    <strong className="text-[#2a3b68] block mb-2">{ex.exercise}</strong>
-                    <div className="grid grid-cols-4 gap-2">
-                      {ex.sets?.map((set: any, sIdx: number) => (
-                        <div key={sIdx} className="bg-slate-50 p-2 rounded-lg border border-slate-200 text-center">
-                          <div className="text-[9px] text-slate-400 font-bold mb-1">SET {set.set_no}</div>
-                          <div className="font-bold text-slate-700">{set.kg} <span className="text-[9px] font-normal">kg</span></div>
-                          <div className="font-bold text-slate-700">{set.tekrar} <span className="text-[9px] font-normal">tek</span></div>
-                          <div className="font-bold text-blue-600 mt-1">Z: {set.zorluk}</div>
-                        </div>
-                      ))}
-                    </div>
+            
+            {savedWorkouts.length === 0 ? (
+              <div className="text-center text-slate-500 p-8 bg-white rounded-3xl border border-slate-200">Henüz kaydedilmiş bir antrenman yok.</div>
+            ) : (
+              savedWorkouts.map((workout, index) => (
+                <div key={index} className="bg-slate-50 border border-slate-200 rounded-3xl p-5 shadow-sm">
+                  <div className="flex justify-between items-center border-b border-slate-200 pb-3 mb-3">
+                    <span className="font-extrabold text-slate-800">{workout.student_name} <span className="text-blue-500 ml-1">• {workout.workout_day}</span></span>
+                    <span className="text-[10px] text-slate-400 font-bold">{new Date(workout.created_at).toLocaleString('tr-TR')}</span>
                   </div>
-                ))}
-              </div>
-            ))}
+                  <div className="text-xs text-slate-600 mb-4 bg-white p-3 rounded-xl border border-slate-100 shadow-sm italic">&quot; {workout.coach_note} &quot;</div>
+                  {workout.workout_data?.map((ex: any, i: number) => (
+                    <div key={i} className="mb-3 text-xs bg-white p-3 rounded-xl border border-slate-100 shadow-sm">
+                      <strong className="text-[#2a3b68] block mb-2">{ex.exercise}</strong>
+                      <div className="grid grid-cols-4 gap-2">
+                        {ex.sets?.map((set: any, sIdx: number) => (
+                          <div key={sIdx} className="bg-slate-50 p-2 rounded-lg border border-slate-200 text-center">
+                            <div className="text-[9px] text-slate-400 font-bold mb-1">SET {set.set_no}</div>
+                            <div className="font-bold text-slate-700">{set.kg} <span className="text-[9px] font-normal">kg</span></div>
+                            <div className="font-bold text-slate-700">{set.tekrar} <span className="text-[9px] font-normal">tek</span></div>
+                            <div className="font-bold text-blue-600 mt-1">Z: {set.zorluk}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ))
+            )}
           </div>
         )}
       </div>
